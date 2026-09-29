@@ -1,4 +1,6 @@
-# SCC — Система контроля контекстного окна
+# SCC_1
+
+## SCC — Система контроля контекстного окна
 
 **Agentic State Geometry** (теория) → **Geometric Context Controller** (реализация) → **Agent Geometry Observatory** (визуализация).
 
