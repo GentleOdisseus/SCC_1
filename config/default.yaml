@@ -1,0 +1,35 @@
+# Пороги и коэффициенты Geometric Context Controller.
+# Значения стартовые — подлежат калибровке экспериментами (docs/03_experiments).
+
+cost_weights:            # D_cost = α·Tokens + β·Steps + γ·Money + δ·Time + ε·Risk
+  alpha_tokens: 1.0e-4
+  beta_steps: 0.05
+  gamma_money: 1.0
+  delta_time_s: 1.0e-3
+  epsilon_risk: 2.0
+
+evidence_weights:        # доверие к источнику наблюдения (калибровать!)
+  llm_self_report: 0.1
+  commit: 0.2
+  pull_request: 0.3
+  ci: 0.7
+  integration_test: 0.85
+  user_acceptance: 0.9
+  production_verification: 0.95
+
+speedometer:
+  message_max_bytes: 65536
+  context_sample_stale_seconds: 60
+  statusline_refresh_interval_seconds: 5
+
+controller:
+  context_inflation_max: 5.0      # I = ΔC / (−ΔD + ε)
+  context_density_min: 0.35       # ρ = useful / total
+  context_entropy_max: 0.7        # H(C), нормированная
+  context_friction_max: 0.6
+  goal_velocity_stall: 0.005      # |v_G| ниже — стагнация
+  estimation_gap_max: 0.15        # D_verified − D_estimated
+  merge_risk_max: 0.6
+  max_fragments: 20               # верхняя граница n (поиск n* — эксперимент)
+  uncertainty_verify: 0.25        # U_D выше — сначала VERIFY/RETRIEVE
+  window_steps: 5                 # окно для производных (v, a)

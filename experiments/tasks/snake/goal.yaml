@@ -1,0 +1,14 @@
+q_min: 0.9
+requirements:
+  - id: build_passes
+    weight: 0.1
+    hard: true
+    verifier: verifiers/build.sh
+  - id: tests_pass
+    weight: 0.4
+    hard: true
+    verifier: verifiers/tests.sh
+  - id: acceptance
+    weight: 0.5
+    hard: true
+    verifier: verifiers/acceptance.sh

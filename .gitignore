@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.claude/settings.local.json
+.ipynb_checkpoints/
+.DS_Store
+data/raw/
+experiments/runs/*
+!experiments/runs/.gitkeep
+._*
