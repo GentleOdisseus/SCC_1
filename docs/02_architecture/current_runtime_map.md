@@ -1,6 +1,6 @@
 # SCC: карта текущей архитектуры
 
-> **Срез:** 2026-09-30. Это карта текущего кода, сопоставленная с архитектурными документами. Раздел «Целевая архитектура» помечает замысел, который ещё не соединён в runtime. Живая точка входа продукта — локальный verifier-backed Speedometer. В текущем рабочем дереве есть незакоммиченный прототип Explorer; он не входит в branch `3009_1_scc_test`, куда запрашивалось положить эту схему.
+> **Срез:** 2026-09-30. Это карта текущего кода, сопоставленная с архитектурными документами. Раздел «Целевая архитектура» помечает замысел, который ещё не соединён в runtime. Живая точка входа продукта — локальный verifier-backed Speedometer. Local Run Explorer — уже committed read-only модуль для просмотра его локальных runs; он не меняет observer, commands или форматы данных.
 
 ## 1. Короткий вывод
 
@@ -39,7 +39,7 @@ flowchart LR
     W[scc-speedometer worker\ncollect_snapshot interval]
     V[Verifier .sh или .py\nworkspace CWD]
     WATCH[scc-speedometer watch / status]
-    EXP[scc-explorer\nuncommitted local prototype]
+    EXP[scc-explorer\nread-only run/log browser]
 
     U -->|prompt text| HA
     S -->|final visible response| HA
@@ -91,11 +91,11 @@ flowchart LR
 | Controller | `src/scc/controller/actions.py`; `policy.py` | `Action`, `GeometrySnapshot`, `Decision`, `ThresholdPolicy.decide()` с приоритетами STOP/ROLLBACK/VERIFY/RETRIEVE/COMPRESS/REPLAN/MERGE/SPLIT/CONTINUE. | Политика работает изолированно; downstream actuator/agent connection отсутствует. |
 | Observatory node card | `src/scc/observatory/render.py` | `render_node_card(ContextNode, ...)` — текстовая карточка контекстного узла. | Не live Speedometer UI и не web dashboard. |
 | Speedometer TUI | `src/scc/observer/speedometer.py` | `watch` показывает verifier progress, context sample, prompt completeness, event/message feeds. | Live terminal view; при TTY обновляет экран, без TTY печатает один render. |
-| Local Run Explorer | Текущий локальный рабочий tree: `src/scc/log_explorer/`; добавлен локальный `pyproject.toml` entry point `scc-explorer` | `reader.py` — безопасное чтение allowlisted run files; `query.py` — AND-поиск/selectors; `catalog.py` — discovery/filter/page; `ui.py` — curses run list/timeline/detail; `cli.py` — `--list` или TUI. | Прототип присутствует только в незакоммиченном локальном дереве и **не включён в target branch `3009_1_scc_test`**. Docs ещё говорят «предложение»; dedicated `tests/log_explorer/` нет. Не считать shipped/validated в ветке. |
+| Local Run Explorer | `src/scc/log_explorer/`; `pyproject.toml` → `scc-explorer` | `reader.py` — чтение структурированных allowlisted run files; `process_log.py` — отдельный streaming view/search для raw `speedometer.log`; `query.py` — AND-поиск/selectors; `catalog.py` — discovery/filter/page; `ui.py` — curses run list/timeline/detail/process-log; `cli.py` — `--list`, `--runs-dir` или TUI. | Отдельный read-only пользовательский модуль Speedometer с тестами в `tests/log_explorer/`. JSONL и raw process log — разные источники: `speedometer.log` читается только по явному запросу/в process-log view, не redacted как prompt feed. Обычный JSONL timeline пока загружается eagerly; pagination/lazy-load acceptance остаётся открытым.
 
 ## 4. CLI и операции
 
-В committed target branch `pyproject.toml` регистрирует `scc-speedometer`. В текущем локальном незакоммиченном дереве добавлен также `scc-explorer`; эта регистрация не входит в запрос на push схемы.
+`pyproject.toml` регистрирует две независимые точки входа: `scc-speedometer` управляет observer lifecycle, а `scc-explorer` открывает read-only каталог сохранённых runs. Explorer не является подкомандой Speedometer и не меняет его существующие команды.
 
 ### Speedometer
 
@@ -108,7 +108,7 @@ flowchart LR
 | `scc-speedometer watch --run-id ID` | Отдельный 1-секундный screen renderer; `Ctrl-C` отсоединяет display. Это не worker и не run itself. |
 | `scc-speedometer hooks install/uninstall` | Добавляет/удаляет только SCC-managed hooks в workspace-local settings, сохраняет посторонние настройки. |
 | `scc-speedometer statusline install/uninstall` | Устанавливает/удаляет context sampler; отказывается молча заменять существующий StatusLine. |
-| `scc-explorer --list [--runs-dir PATH]` | Печатает короткий список локальных runs; `scc-explorer` без `--list` требует TTY и открывает read-only curses UI. |
+| `scc-explorer [--runs-dir PATH]` | По умолчанию открывает read-only curses catalog; ↑/↓ и Enter выбирают run, `l` открывает его `speedometer.log`, `/` и `f` принимают query. `--list` печатает короткий каталог. |
 
 ### Статус наблюдателя ≠ статус задачи
 
@@ -134,7 +134,7 @@ G_reached = all(hardᵢ ⇒ qᵢ=1) ∧ Progress ≥ q_min
 - `collect_snapshot()` заново читает `<task_dir>/goal.yaml` на каждом snapshot и выбирает verifier из каждого requirement.
 - Изменение goal/verifiers в ходе run способно смешать старые и новые acceptance evidence; для нового контракта нужен отдельный task version + новый run ID.
 - Текст локален, redacted до записи, capped по размеру, truncated marker добавляется; hidden instructions/reasoning/tool payloads/file contents не сохраняются.
-- JSONL write append-only; `scc-explorer` читает local run files через allowlist и не должен обходить workspace.
+- JSONL write append-only; `scc-explorer` читает JSONL через allowlist и не обходит workspace. Пользователь явно открывает отдельный raw view/search `speedometer.log`; этот worker output не имеет prompt-feed redaction и помечается в UI. Ни один источник не мутируется.
 
 ## 7. Операционная осторожность
 
@@ -146,11 +146,11 @@ Revised Snake goal находится в `experiments/tasks/snake-v2/` как о
 
 - `docs/00_vision.md`, `docs/01_theory/` — теория state-space, goal region, distance, dynamics/context laws.
 - `docs/02_architecture/overview.md` и component docs — целевой design, который надо читать вместе с текущей картой.
-- `docs/02_architecture/local_run_explorer*.md` — спецификация Explorer; её заявленный status устарел относительно CLI/source code.
+- `docs/02_architecture/local_run_explorer*.md` — пользовательский guide и implementation baseline; read-status и явно открытые acceptance items отражают текущий код.
 - `docs/03_experiments/experiment_plan.md` — общая программа E1–E5; MVP observer не подтверждает научные гипотезы.
 - `MVP/` — проверенный scope и privacy/measurement protocol Speedometer.
 - `experiments/tasks/` — task/goal/verifier contracts; `experiments/runs/` — локальные observer runs; `demos/snake/` — reference implementation, отличная от чистого measured workspace.
-- `tests/` — geometry/evidence/controller, prompt heuristic, hooks/statusline/speedometer lifecycle; dedicated Log Explorer suite отсутствует.
+- `tests/` — geometry/evidence/controller, prompt heuristic, hooks/statusline/speedometer lifecycle и отдельный `tests/log_explorer/` suite.
 
 ## 9. Главное архитектурное расхождение
 

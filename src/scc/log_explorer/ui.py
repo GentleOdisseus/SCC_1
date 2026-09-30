@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from scc.log_explorer.catalog import filter_records, list_runs
-from scc.log_explorer.query import QueryError, parse_query
+from scc.log_explorer.process_log import ProcessLogPage, read_process_log_page
+from scc.log_explorer.query import Query, QueryError, parse_query
 from scc.log_explorer.reader import Record, RunInfo
 
 def run_ui(stdscr: Any, runs_root: Path) -> None:
@@ -25,6 +26,13 @@ def run_ui(stdscr: Any, runs_root: Path) -> None:
     query_text = ""
     query_error = ""
     query = parse_query("")
+    log_query_text = ""
+    log_query_error = ""
+    log_query = parse_query("")
+    log_page = ProcessLogPage((), 0, 0, 0, "not opened")
+    selected_log_record = 0
+    detail_record: Record | None = None
+    detail_parent = "timeline"
 
     while True:
         stdscr.erase()
@@ -36,15 +44,11 @@ def run_ui(stdscr: Any, runs_root: Path) -> None:
             records = filter_records(run.records, query)
             selected_record = min(selected_record, max(0, len(records) - 1))
             _draw_timeline(stdscr, run, records, selected_record, query_text, query_error, height, width)
-        elif mode == "detail" and runs:
-            run = runs[selected_run]
-            records = filter_records(run.records, query)
-            if records:
-                selected_record = min(selected_record, len(records) - 1)
-                detail_scroll = _draw_detail(stdscr, run, records[selected_record], detail_scroll, height, width, query_text, query_error)
-            else:
-                mode = "timeline"
-                continue
+        elif mode == "process_log" and runs:
+            selected_log_record = min(selected_log_record, max(0, len(log_page.records) - 1))
+            _draw_process_log(stdscr, runs[selected_run], log_page, selected_log_record, log_query_text, log_query_error, height, width)
+        elif mode == "detail" and runs and detail_record is not None:
+            detail_scroll = _draw_detail(stdscr, runs[selected_run], detail_record, detail_scroll, height, width, query_text if detail_parent == "timeline" else log_query_text, query_error if detail_parent == "timeline" else log_query_error)
         stdscr.refresh()
 
         key = stdscr.getch()
@@ -52,9 +56,10 @@ def run_ui(stdscr: Any, runs_root: Path) -> None:
             return
         elif key == 27:
             if mode == "detail":
-                mode = "timeline"
-            elif mode == "timeline":
-                mode = "runs"
+                mode = detail_parent
+                detail_record = None
+            elif mode in {"timeline", "process_log"}:
+                mode = "runs" if mode == "timeline" else "timeline"
             else:
                 return
         elif key == curses.KEY_RESIZE:
@@ -79,7 +84,16 @@ def run_ui(stdscr: Any, runs_root: Path) -> None:
                 selected_record = min(max(0, len(visible) - 1), selected_record + 1)
             elif key in (10, 13, curses.KEY_ENTER) and visible:
                 detail_scroll = 0
+                detail_record = visible[selected_record]
+                detail_parent = "timeline"
                 mode = "detail"
+            elif key == ord("l"):
+                log_query_text = ""
+                log_query_error = ""
+                log_query = parse_query("")
+                log_page = _load_log_page(runs[selected_run], log_query, 0)
+                selected_log_record = 0
+                mode = "process_log"
             elif key == ord("/"):
                 entered = _prompt(stdscr, "Search query: ", query_text)
                 query_text = entered
@@ -105,25 +119,70 @@ def run_ui(stdscr: Any, runs_root: Path) -> None:
                     mode = "runs"
             elif key == ord("b"):
                 mode = "runs"
+        elif mode == "process_log":
+            if key in (curses.KEY_UP, ord("k")):
+                selected_log_record = max(0, selected_log_record - 1)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                selected_log_record = min(max(0, len(log_page.records) - 1), selected_log_record + 1)
+            elif key in (10, 13, curses.KEY_ENTER) and log_page.records:
+                detail_record = log_page.records[selected_log_record]
+                detail_parent = "process_log"
+                detail_scroll = 0
+                mode = "detail"
+            elif key in (ord("/"), ord("f")):
+                entered = _prompt(stdscr, "Process-log query: ", log_query_text)
+                try:
+                    log_query = parse_query(entered)
+                    log_query_text, log_query_error = entered, ""
+                    log_page = _load_log_page(runs[selected_run], log_query, 0)
+                    selected_log_record = 0
+                except QueryError as exc:
+                    log_query_text, log_query_error = entered, str(exc)
+            elif key == ord("r"):
+                log_page = _load_log_page(runs[selected_run], log_query, log_page.page_index)
+                selected_log_record = min(selected_log_record, max(0, len(log_page.records) - 1))
+            elif key == ord("n") and log_page.page_index + 1 < log_page.page_count:
+                log_page = _load_log_page(runs[selected_run], log_query, log_page.page_index + 1)
+                selected_log_record = 0
+            elif key == ord("p") and log_page.page_index > 0:
+                log_page = _load_log_page(runs[selected_run], log_query, log_page.page_index - 1)
+                selected_log_record = 0
+            elif key == ord("b"):
+                mode = "timeline"
         elif mode == "detail":
             if key in (curses.KEY_UP, ord("k")):
                 detail_scroll = max(0, detail_scroll - 1)
             elif key in (curses.KEY_DOWN, ord("j")):
                 detail_scroll += 1
             elif key in (10, 13, curses.KEY_ENTER, curses.KEY_LEFT):
-                mode = "timeline"
+                mode = detail_parent
+                detail_record = None
             elif key == ord("r"):
                 current_id = runs[selected_run].run_id
-                old_records = filter_records(runs[selected_run].records, query)
-                identity = old_records[selected_record].identity if old_records else None
-                runs = list_runs(str(runs_root))
-                if not runs:
-                    mode = "runs"
+                if detail_parent == "process_log":
+                    log_page = _load_log_page(runs[selected_run], log_query, log_page.page_index)
+                    selected_log_record = min(selected_log_record, max(0, len(log_page.records) - 1))
+                    detail_record = log_page.records[selected_log_record] if log_page.records else None
+                    if detail_record is None:
+                        mode = "process_log"
                 else:
-                    selected_run = next((i for i, run in enumerate(runs) if run.run_id == current_id), 0)
-                    new_records = filter_records(runs[selected_run].records, query)
-                    selected_record = next((i for i, record in enumerate(new_records) if record.identity == identity), 0)
-                    detail_scroll = 0
+                    identity = detail_record.identity if detail_record else None
+                    runs = list_runs(str(runs_root))
+                    if not runs:
+                        mode = "runs"
+                        detail_record = None
+                    else:
+                        selected_run = next((i for i, run in enumerate(runs) if run.run_id == current_id), 0)
+                        new_records = filter_records(runs[selected_run].records, query)
+                        selected_record = next((i for i, record in enumerate(new_records) if record.identity == identity), 0)
+                        detail_record = new_records[selected_record] if new_records else None
+                        if detail_record is None:
+                            mode = "timeline"
+                detail_scroll = 0
+
+
+def _load_log_page(run: RunInfo, query: Query, page_index: int) -> ProcessLogPage:
+    return read_process_log_page(run.path, run.run_id, query, page_index=page_index)
 
 
 def _draw_runs(stdscr: Any, runs: list[RunInfo], selected: int, root: Path, height: int, width: int) -> None:
@@ -162,11 +221,35 @@ def _draw_timeline(stdscr: Any, run: RunInfo, records: list[Record], selected: i
     visible = max(1, height - 11)
     start = max(0, min(selected - visible // 2, max(0, len(records) - visible)))
     for row, record in enumerate(records[start:start + visible], 9):
-        mark = ">" if start + row - 5 == selected else " "
+        mark = ">" if start + row - 9 == selected else " "
         stamp = time.strftime("%H:%M:%S", time.localtime(record.ts)) if record.ts is not None else "—"
         _add(stdscr, row, 0, f"{mark} {stamp:<8} {record.source:<18.18} {_record_label(record)}", width)
     _add(stdscr, height - 2, 0, "Query fields: source type session tool requirement status after before · implicit AND", width)
-    _add(stdscr, height - 1, 0, "↑/↓ select  Enter detail  / search  f filters  r refresh  b runs  q quit", width)
+    _add(stdscr, height - 1, 0, "↑/↓ select  Enter detail  / search  f filters  l process log  r refresh  b runs  q quit", width)
+
+
+def _draw_process_log(stdscr: Any, run: RunInfo, page: ProcessLogPage, selected: int, query: str, error: str, height: int, width: int) -> None:
+    _add(stdscr, 0, 0, f"Process log · {run.run_id} · {run.path / 'speedometer.log'}", width)
+    _add(stdscr, 1, 0, "Raw worker text; this file is not redacted like the visible prompt feed.", width)
+    _add(stdscr, 2, 0, f"Query: {query or '(none)'}" + (f" · {error}" if error else ""), width)
+    if page.issue:
+        status = f"speedometer.log: {page.issue}"
+    elif page.total:
+        status = f"{page.total} matching lines · page {page.page_index + 1}/{page.page_count} from newest"
+    else:
+        status = "No matching lines"
+    _add(stdscr, 3, 0, status, width)
+    _add(stdscr, 4, 0, "Line   Worker log line", width)
+    visible = max(1, height - 7)
+    start = max(0, min(selected - visible // 2, max(0, len(page.records) - visible)))
+    for row, record in enumerate(page.records[start:start + visible], 5):
+        mark = ">" if start + row - 5 == selected else " "
+        line = _clean_display(record.summary)
+        if record.truncated:
+            line += " · truncated"
+        _add(stdscr, row, 0, f"{mark} {record.line:<6} {line}", width)
+    _add(stdscr, height - 2, 0, "Query fields: source:speedometer.log · terms/phrases use AND", width)
+    _add(stdscr, height - 1, 0, "↑/↓ select  Enter detail  / search  f filters  r refresh  n older  p newer  b back  q quit", width)
 
 
 def _draw_detail(stdscr: Any, run: RunInfo, record: Record, scroll: int, height: int, width: int, query: str, error: str) -> int:
@@ -194,14 +277,17 @@ def _draw_detail(stdscr: Any, run: RunInfo, record: Record, scroll: int, height:
     if record.redactions:
         lines.append(f"privacy: redacted ({record.redactions})")
     if record.truncated:
-        lines.append("privacy: truncated")
+        lines.append("display: worker-log line capped at 64 KiB" if record.source == "speedometer.log" else "privacy: truncated")
     if record.text_unavailable:
         lines.append("text: unavailable")
     if record.issue:
         lines.append(f"record: {record.issue}")
-    if record.searchable and record.source == "messages":
+    if record.source == "messages" and record.searchable:
         lines.append("visible text:")
         lines.extend(textwrap.wrap(_clean_display(record.searchable), max(1, width - 4)) or [""])
+    elif record.source == "speedometer.log":
+        lines.append("raw worker log line; not redacted by the prompt adapter:")
+        lines.extend(textwrap.wrap(_clean_display(record.searchable), max(1, width - 4)) or ["(blank line)"])
     _add(stdscr, 0, 0, f"Run {run.run_id}", width)
     _add(stdscr, 1, 0, f"Observer process: {run.observer_state}", width)
     _add(stdscr, 2, 0, f"Task-run lifecycle: {run.task_lifecycle}", width)

@@ -1,78 +1,45 @@
-# Local Run Explorer — предложение
+# Local Run Explorer
 
-Статус: **предложение, не реализовано**. Это исторический просмотрщик локальных экспериментальных прогонов с UX, вдохновлённым Kibana, но не копия Kibana и не распределённая observability-платформа.
+Статус: **реализованный read-only модуль Speedometer**. Explorer остаётся в `src/scc/log_explorer/` с отдельной CLI-точкой входа `scc-explorer`; команды и runtime Speedometer не меняются. Код и источник истины о живом пути см. в [`current_runtime_map.md`](current_runtime_map.md), точные требования и открытые ограничения — в [implementation sub-spec](local_run_explorer_implementation_spec.md).
 
-Для реализации после review/merge PR использовать отдельную [implementation sub-spec](local_run_explorer_implementation_spec.md), основанную на текущих JSONL-контрактах и TUI sketch. Текущий файл остаётся high-level product proposal.
+## Найти run и открыть его
 
-## Цель и пользователи
+Speedometer по умолчанию пишет runs в `experiments/runs/<run_id>` **относительно текущего рабочего каталога**. Запускай команду из корня SCC или задай корень явно:
 
-Помочь оператору найти нужный run, восстановить последовательность наблюдаемых событий и быстро понять, какие данные привели к текущему verifier-backed состоянию. Предполагаемый пользователь — разработчик/исследователь SCC, анализирующий собственные локальные прогоны.
+```bash
+scc-explorer --list
+scc-explorer
+scc-explorer --runs-dir /path/to/SCC/experiments/runs
+```
 
-## Предлагаемый MVP
+`--list` печатает краткий read-only каталог. В TUI ↑/↓ выбирают run, Enter открывает timeline, Enter на записи открывает detail, `/` ищет, `f` вводит фильтры (оба используют один язык запросов), `r` обновляет, `b` возвращает, `q` выходит. На timeline клавиша `l` открывает отдельный процессный log `speedometer.log`; там Enter открывает выбранную строку, `n`/`p` переходят к более старым/новым страницам, `b` возвращает к timeline.
 
-- Сканировать `experiments/runs/<run_id>/` и показывать список обнаруженных прогонов.
-- Для выбранного run строить временную шкалу и показывать event/message/context/verifier snapshot records.
-- Фильтровать по времени, типу записи, session/tool, outcome и verifier requirement/status.
-- Показывать detail одной записи с её timestamp, источником, IDs и безопасно разрешёнными полями.
-- Поддержать простые текстовый поиск и экспорт выбранного результата/сводки без изменения первичных журналов.
-- Читать существующие JSONL-файлы непосредственно; постоянный поисковый индекс пока не вводить. Приёмные тесты на объём и скорость должны предшествовать решению об индексации.
+## Какие данные показывает Explorer
 
-## Источники данных и ограничения схемы
+Стандартный run catalog и timeline читают только непосредственные run directories и разрешённые structured-файлы: `config.json`, `status.json`, `speedometer.pid.json`, `events.jsonl`, `messages.jsonl`, `context_samples.jsonl`, `snapshots.jsonl`. Unknown fields не выводятся; missing/empty, malformed и unsupported records остаются явно отмеченными. Workspace не обходится, subprocess/verifier/network не запускаются, источники не изменяются и индекс на диске не создаётся.
 
-Текущая договорённость о run-файлах описана в `experiments/README.md` и `MVP/03_implementation.md`:
+`speedometer.log` — отдельный raw stdout/stderr background worker, а не JSONL stream и не message transcript. Он доступен только при явном открытии `l`; поиск идёт потоково по строкам с номером строки. Для этого источника Explorer не обещает те же redaction/cap гарантии, что для `messages.jsonl`; интерфейс предупреждает об этом. Большие строки показываются с truncation marker. `after`/`before` не применяются к `speedometer.log`, так как у него нет нормализованного timestamp. Не добавлять в Explorer поиск по workspace, transcript, tool payloads, API bodies или содержимому файлов.
 
-- `events.jsonl` — allowlisted hook/session events;
-- `messages.jsonl` — пользовательский prompt и финальный видимый ответ Claude, с cap/redaction/truncation;
-- `context_samples.jsonl` — отдельные StatusLine observations;
-- `snapshots.jsonl` — verifier-backed progress snapshots;
-- `config.json`, `status.json` и process/log файлы — конфигурация и состояние observer.
+Observer state, task lifecycle и verifier outcome отображаются независимо. Без явного lifecycle evidence состояние задачи `unknown`; только snapshots меняют verifier-backed progress/`D_completion`/`goal_reached`.
 
-Сейчас нет исторического Explorer UI или единой полной, versioned схемы для всех API observations. Explorer должен валидировать записи по типу/версии схемы, показывать unknown fields только если они прошли allowlist, и сохранять исходные JSONL без мутаций. До появления адаптера допустимы только API **metadata/spans**, если они предоставлены: operation/endpoint identifier, timestamp/duration, status/outcome, token counters и источник. **Request/response bodies не собирать и не показывать** в MVP; к этому можно вернуться только после отдельного решения о согласии, redaction и retention.
+## Язык запросов
 
-## Lifecycle — три разные оси
+Обычные слова и фразы в кавычках выполняют case-insensitive substring search и объединяются через неявное AND. Selector names и строковые значения сравниваются без учёта регистра; значение selector — точное совпадение. Поддерживаются:
 
-Не смешивать:
+- `source:` — `events`, `messages`, `context_samples`, `snapshots`; в process-log view также `speedometer.log`.
+- `type:`, `session:`, `tool:`, `requirement:`, `status:` — соответствующие нормализованные поля записи.
+- `after:` и `before:` — ISO-8601 date/datetime; naive datetime понимается как UTC. Сравнения строгие (`>` / `<`).
 
-1. **Observer process state:** `running`, `stopped`, `error`, `stale` — состояние самого Speedometer daemon.
-2. **Task-run lifecycle:** `running`, `completed`, `interrupted`, `failed`, `unknown` — состояние сессии разработки.
-3. **Verifier outcome/progress:** `D_completion`, requirement q/status, hard constraints и `goal_reached` — проверенное состояние задачи.
+OR/NOT, произвольные имена полей и свободный JSON не поддерживаются. Примеры:
 
-На текущих данных task-run lifecycle остаётся `unknown`, пока нет явного lifecycle event или ручного close/interrupt event. Observer `stopped` не означает, что задача закончена; verifier failure означает, что проверка сейчас не прошла, но сам по себе не объясняет, провалилась ли или была прервана задача. Не выводить completed/interrupted/failed из одной остановки observer или одного упавшего verifier. Только verifier snapshots двигают `D_completion`; число событий/сообщений и объём текста — не прогресс.
+```text
+source:messages collision after:2026-09-01T00:00:00Z
+requirement:tests status:success
+source:speedometer.log "verifier error"
+```
 
-## Приватность и доступ
+Во время обычного timeline поиска доступные поля — это только searchable allowlisted message text и короткие event summaries. Чтобы искать строки process log, сначала открой `l`, затем введи запрос; process log не подмешивается в обычную timeline автоматически.
 
-- Explorer работает локально, читает только run directories, без облачной синхронизации и внешней отправки.
-- Показывает те же локальные visible prompts/final responses, которые уже разрешены политикой Speedometer; скрытые instructions, reasoning, tool payloads, file contents и transcript не добавлять.
-- Применять текущие caps/redaction. В detail показывать, что текст был отредактирован или усечён; не выдавать такие записи за полный оригинал.
-- API bodies исключены. Пользователь управляет retention удалением run directory.
-- Не менять source logs при просмотре, фильтрации, поиске и экспорте.
+## Текущие ограничения
 
-## Не входит в MVP
-
-- Kibana/Elastic backend, общий multi-user сервер, удалённые/облачные run stores, dashboards/alerting, live tail из разных машин.
-- Запись тел запросов/ответов API.
-- Вывод причин завершения без явного свидетельства; семантический разбор сообщений как lifecycle evidence.
-- Controller actions или влияние Explorer на текущую сессию Claude Code.
-- Утверждения о полноте телеметрии: пропуски hook/statusline должны оставаться видимыми.
-
-## Критерии приёмки будущей реализации
-
-1. При наличии нескольких run directories Explorer показывает их без чтения или изменения содержимого рабочих проектов.
-2. Run detail строит стабильную временную шкалу из имеющихся JSONL-потоков и явно показывает `source`, timestamp и доступные IDs.
-3. Фильтры по run/time/type/tool/outcome/requirement уменьшают выдачу ожидаемым способом; текстовый поиск работает только по локально разрешённым полям.
-4. Незнакомая/повреждённая JSONL-запись отображается как parse error/unsupported record с указанием источника, а не превращается в выдуманное значение.
-5. Explorer отображает observer status, task lifecycle status и verifier outcome раздельно. При отсутствии явного run lifecycle evidence значение `unknown`.
-6. Упавший verifier не означает автоматически task-run `failed`; остановленный observer не означает task-run `completed`.
-7. Prompts, ответы, context samples и hook events не изменяют verifier q или `D_completion`.
-8. В export/search/log view отсутствуют API body, tool input/output, file contents, hidden instructions и reasoning.
-9. Просмотр, фильтрация и экспорт read-only; исходные JSONL-хэши/байты не меняются.
-10. При отсутствии/пропуске источника Explorer явно показывает неполные данные, не заполняя пропуск нулём или inferred lifecycle.
-
-## Решения перед implementation
-
-- Нужен ли быстрый индекс после измерения реального количества/размера локальных run logs?
-- Как версионировать JSONL event schemas и backward compatibility?
-- Нужен ли ручной lifecycle action (`close as completed` / `mark interrupted`) и как логировать actor/time/reason?
-- Какой верхний поддерживаемый объём записей/время загрузки должен пройти тест прежде, чем считать MVP полезным?
-
-До принятия этих решений это architecture proposal, не implementation commitment.
+Explorer не является Kibana/сервером наблюдаемости и не экспортирует/изменяет данные. Стандартные JSONL records сейчас загружаются eagerly; `page_records` helper пока не подключён к TUI, поэтому pagination/lazy-load для больших run directories остаётся открытым пунктом. Утверждённого performance/volume budget нет; process log, в отличие от JSONL records, сканируется потоково и показывает ограниченную страницу результатов. См. acceptance items и deferred decisions в implementation sub-spec — не считать их выполненными без отдельной проверки.

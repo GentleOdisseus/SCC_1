@@ -8,6 +8,7 @@ import pytest
 
 from scc.log_explorer.catalog import filter_records, list_runs, page_records
 from scc.log_explorer.cli import main
+from scc.log_explorer.process_log import MAX_LINE_BYTES, read_process_log_page
 from scc.log_explorer.query import QueryError, parse_query
 from scc.log_explorer.reader import discover_runs, load_run
 from scc.log_explorer import ui
@@ -248,6 +249,81 @@ def test_ui_accepts_allowlisted_query_and_displays_it(tmp_path: Path, monkeypatc
     screen = QueryScreen()
     ui.run_ui(screen, root)
     assert any("Query: source:messages" in line for line in screen.lines)
+
+
+def test_process_log_search_streams_matches_and_pages_from_newest(tmp_path: Path) -> None:
+    run = make_run(tmp_path / "runs", "worker-log")
+    (run / "speedometer.log").write_text("boot\nerror first\nhealthy\nERROR second\n", encoding="utf-8")
+    query = parse_query("source:speedometer.log error")
+
+    newest = read_process_log_page(run, "worker-log", query, page_size=1)
+    older = read_process_log_page(run, "worker-log", query, page_index=1, page_size=1)
+    assert newest.total == 2 and newest.page_count == 2
+    assert [(r.line, r.searchable) for r in newest.records] == [(4, "ERROR second")]
+    assert [(r.line, r.searchable) for r in older.records] == [(2, "error first")]
+
+
+def test_process_log_distinguishes_missing_empty_symlink_and_caps_long_lines(tmp_path: Path) -> None:
+    run = make_run(tmp_path / "runs", "worker-log-states")
+    query = parse_query("")
+    assert read_process_log_page(run, "worker-log-states", query).issue == "missing"
+
+    log_path = run / "speedometer.log"
+    log_path.write_bytes(b"")
+    assert read_process_log_page(run, "worker-log-states", query).issue == "empty"
+
+    log_path.write_bytes(b"visible " + b"x" * (MAX_LINE_BYTES + 100) + b" tail\n")
+    page = read_process_log_page(run, "worker-log-states", query)
+    assert len(page.records) == 1 and page.records[0].line == 1
+    assert page.records[0].truncated
+    assert len(page.records[0].searchable.encode("utf-8")) <= MAX_LINE_BYTES
+
+    outside = tmp_path / "outside.log"
+    outside.write_text("private text", encoding="utf-8")
+    log_path.unlink()
+    try:
+        log_path.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are not supported")
+    assert read_process_log_page(run, "worker-log-states", query).issue == "unsafe symlink"
+
+
+def test_process_log_queries_do_not_modify_the_log(tmp_path: Path) -> None:
+    root = tmp_path / "runs"
+    run = make_run(root, "worker-log-immutable")
+    (run / "speedometer.log").write_text("boot\nerror\nfinished\n", encoding="utf-8")
+    before = _hash_tree(root)
+
+    page = read_process_log_page(run, "worker-log-immutable", parse_query("error"))
+    assert [record.searchable for record in page.records] == ["error"]
+    assert _hash_tree(root) == before
+
+
+def test_ui_opens_and_searches_process_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "runs"
+    run = make_run(root, "worker-ui", status={"state": "stopped", "updated_at": 1})
+    (run / "speedometer.log").write_text("boot\nverifier error: missing file\n", encoding="utf-8")
+
+    class LogScreen:
+        keys = [10, ord("l"), ord("/"), 10, 10, ord("q")]
+        query_keys = list("source:speedometer.log error") + ["\n"]
+        lines: list[str] = []
+        def keypad(self, _enabled: bool) -> None: pass
+        def erase(self) -> None: pass
+        def getmaxyx(self) -> tuple[int, int]: return 24, 100
+        def addnstr(self, _row, _col, text, _length) -> None: self.lines.append(text)
+        def refresh(self) -> None: pass
+        def move(self, _row: int, _col: int) -> None: pass
+        def getch(self) -> int: return self.keys.pop(0)
+        def get_wch(self) -> str: return self.query_keys.pop(0)
+
+    monkeypatch.setattr(ui.curses, "curs_set", lambda _value: None)
+    screen = LogScreen()
+    ui.run_ui(screen, root)
+    assert any("Raw worker text" in line for line in screen.lines)
+    assert any("Query: source:speedometer.log error" in line for line in screen.lines)
+    assert any("raw worker log line" in line for line in screen.lines)
+    assert any("verifier error: missing file" in line for line in screen.lines)
 
 
 def _hash_tree(root: Path) -> dict[str, str]:
