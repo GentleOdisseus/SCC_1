@@ -31,6 +31,8 @@ SCC/
 │   ├── 00_vision.md           ← формулировка идеи и исследовательская программа
 │   ├── 01_theory/             ← пространство состояний, метрики контекста, D, динамика, законы
 │   ├── 02_architecture/       ← Observer, Geometry Engine, Controller, Evidence(Git), Observatory
+│   │   ├── local_run_explorer.md             ← предложение: исторический просмотрщик run-логов (не реализован)
+│   │   └── claude_code_plugin_assessment.md   ← оценка будущей упаковки SCC в plugin (не решение о публикации)
 │   ├── 03_experiments/        ← дизайн экспериментов и протокол
 │   ├── 04_related_work.md
 │   ├── 05_glossary.md

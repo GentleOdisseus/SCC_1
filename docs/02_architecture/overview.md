@@ -14,7 +14,9 @@ Agent ──► Git / CI / Tools ──► Evidence ──► Observer ──►
 | Evidence (Git/CI/PR) | `evidence_git.md` | `src/scc/evidence/` |
 | Geometry Engine | `geometry_engine.md` | `src/scc/geometry/` |
 | Controller | `controller.md` | `src/scc/controller/` |
-| Observatory | `observatory.md` | `src/scc/observatory/` |
+| Observatory (текущий TUI, продуктовая поверхность) | `observatory.md` | `src/scc/observatory/`, `src/scc/observer/speedometer.py` |
+| Local Run Explorer (предложение; реализация изолированным модулем после PR) | `local_run_explorer.md`, `local_run_explorer_implementation_spec.md` | `src/scc/log_explorer/` (запланирован, ещё не создан) |
+| Claude Code plugin assessment (предложение, не реализовано) | `claude_code_plugin_assessment.md` | — |
 | Доменные модели | — | `src/scc/models.py` |
 
 ## Поток данных за один шаг агента

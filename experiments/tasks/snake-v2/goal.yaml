@@ -1,0 +1,15 @@
+# Versioned contract for the revised Snake task. Use a new run ID with this task directory.
+q_min: 0.9
+requirements:
+  - id: build_passes
+    weight: 0.1
+    hard: true
+    verifier: verifiers/build.py
+  - id: tests_pass
+    weight: 0.4
+    hard: true
+    verifier: verifiers/tests.py
+  - id: acceptance
+    weight: 0.5
+    hard: true
+    verifier: verifiers/acceptance.py
