@@ -18,7 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Search query: terms and quoted phrases use AND; allowed selectors are "
             "source, type, session, tool, requirement, status, after, before. "
-            "Example: source:messages collision after:2026-09-01T00:00:00Z"
+            "Example: source:messages collision after:2026-09-01T00:00:00Z. "
+            "In the worker-log view (press l): source:speedometer.log error"
         ),
     )
     parser.add_argument("--runs-dir", type=Path, default=Path("experiments/runs"), help="run root (default: experiments/runs)")
