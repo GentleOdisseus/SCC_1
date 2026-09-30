@@ -15,7 +15,7 @@ Agent ──► Git / CI / Tools ──► Evidence ──► Observer ──►
 | Geometry Engine | `geometry_engine.md` | `src/scc/geometry/` |
 | Controller | `controller.md` | `src/scc/controller/` |
 | Observatory (текущий TUI, продуктовая поверхность) | `observatory.md` | `src/scc/observatory/`, `src/scc/observer/speedometer.py` |
-| Local Run Explorer (предложение; реализация изолированным модулем после PR) | `local_run_explorer.md`, `local_run_explorer_implementation_spec.md` | `src/scc/log_explorer/` (запланирован, ещё не создан) |
+| Local Run Explorer (read-only модуль Speedometer) | `local_run_explorer.md`, `local_run_explorer_implementation_spec.md`, `current_runtime_map.md` | `src/scc/log_explorer/`; `scc-explorer` |
 | Claude Code plugin assessment (предложение, не реализовано) | `claude_code_plugin_assessment.md` | — |
 | Доменные модели | — | `src/scc/models.py` |
 
@@ -30,4 +30,4 @@ Agent ──► Git / CI / Tools ──► Evidence ──► Observer ──►
 
 Диаграмма выше — целевая архитектура, не текущий integrated runtime. Реальный Speedometer path — hooks/StatusLine + task verifiers → локальные JSONL/snapshots → terminal view; активная команда не соединяет Geometry Engine/ThresholdPolicy с действиями агента. См. [карту текущего runtime](current_runtime_map.md) для source-backed различия между реализованными модулями и целевым контуром.
 
-В текущем локальном рабочем дереве есть незакоммиченный прототип `src/scc/log_explorer/` и `scc-explorer`; он не входит в target branch `3009_1_scc_test` в рамках текущего docs push. Local Run Explorer документы пока помечают его как предложение; синхронизировать shipped-status следует вместе с отдельным commit реализации и тестов.
+Local Run Explorer реализован и публикуется отдельной командой `scc-explorer`; он читает локальные Speedometer runs, не меняя команду `scc-speedometer` и формат run-файлов. Текущий observer runtime остаётся verifier-backed измерителем, а не замкнутым Geometry/Controller loop; source-backed детали см. в [карте текущего runtime](current_runtime_map.md).
