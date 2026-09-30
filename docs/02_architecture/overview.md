@@ -26,4 +26,8 @@ Agent ──► Git / CI / Tools ──► Evidence ──► Observer ──►
 4. Controller по порогам из `config/default.yaml` выбирает действие.
 5. Observatory отображает снимок и рекомендацию.
 
-Контроллер — **supervisory**: LLM больше не решает всё сама, над ней работает геометрический надзор.
+## Статус реализации (2026-09-30)
+
+Диаграмма выше — целевая архитектура, не текущий integrated runtime. Реальный Speedometer path — hooks/StatusLine + task verifiers → локальные JSONL/snapshots → terminal view; активная команда не соединяет Geometry Engine/ThresholdPolicy с действиями агента. См. [карту текущего runtime](current_runtime_map.md) для source-backed различия между реализованными модулями и целевым контуром.
+
+В текущем локальном рабочем дереве есть незакоммиченный прототип `src/scc/log_explorer/` и `scc-explorer`; он не входит в target branch `3009_1_scc_test` в рамках текущего docs push. Local Run Explorer документы пока помечают его как предложение; синхронизировать shipped-status следует вместе с отдельным commit реализации и тестов.
