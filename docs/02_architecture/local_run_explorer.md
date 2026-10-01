@@ -40,6 +40,8 @@ source:speedometer.log "verifier error"
 
 Во время обычного timeline поиска доступные поля — это только searchable allowlisted message text и короткие event summaries. Чтобы искать строки process log, сначала открой `l`, затем введи запрос; process log не подмешивается в обычную timeline автоматически.
 
-## Текущие ограничения
+## Текущие ограничения и будущее расширение
+
+Текущий `messages.jsonl` контракт относится к Claude Code: он хранит только разрешённый user prompt и финальный видимый ответ Stop hook. Просмотр учебных диалогов робота-преподавателя (prompt ученика + ответ преподавателя по ходам) — отдельная будущая возможность; для неё потребуются отдельный adapter/schema, критерии оценки и правила доступа/retention. Не считать её доступной в текущем Explorer и не включать автоматически raw API bodies, hidden prompts или model reasoning.
 
 Explorer не является Kibana/сервером наблюдаемости и не экспортирует/изменяет данные. Стандартные JSONL records сейчас загружаются eagerly; `page_records` helper пока не подключён к TUI, поэтому pagination/lazy-load для больших run directories остаётся открытым пунктом. Утверждённого performance/volume budget нет; process log, в отличие от JSONL records, сканируется потоково и показывает ограниченную страницу результатов. См. acceptance items и deferred decisions в implementation sub-spec — не считать их выполненными без отдельной проверки.
