@@ -150,7 +150,7 @@ source:speedometer.log "verifier error"
 Долгосрочные цели, не текущие функции:
 
 - **Микророллбэк:** восстановление task/workspace состояния непосредственно до обработки выбранного prompt. Нужны отдельная безопасная спецификация и проверка; реализация не начинается сейчас.
-- **Robot-teacher engine:** возможное развитие Speedometer в движок для роботов-преподавателей. Это направление требует отдельной архитектуры и evidence model.
+- **Robot-teacher engine:** возможное развитие Speedometer в движок для роботов-преподавателей. Будущий Explorer должен позволять разбирать learner-visible turns — prompt и ответ преподавателя — через отдельный adapter. Состав записей и доступ к дополнительным данным потребуют отдельной архитектуры/evidence/privacy policy; raw API bodies, hidden prompts и reasoning не подразумеваются автоматически.
 
 Не считать controller actions, rollback, robot teaching, `D_cost` или `U_D` частью текущего runtime.
 
