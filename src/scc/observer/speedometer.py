@@ -12,7 +12,6 @@ import signal
 import subprocess
 import sys
 import tempfile
-import textwrap
 import time
 from pathlib import Path
 from typing import Any
@@ -22,6 +21,7 @@ import yaml
 from scc.config import load_config
 from scc.geometry.distance import goal_reached, progress
 from scc.models import Goal, Requirement
+from scc.observer.display import display_text
 from scc.observer.claude_code_hooks import append_hook_event, append_hook_message
 from scc.observer.events import EventKind
 from scc.observer.statusline import append_statusline_sample
@@ -617,11 +617,7 @@ def _messages_feed(run_dir: Path, limit: int = 4) -> list[dict[str, Any]]:
 
 
 def _display_text(value: Any, width: int = 92) -> str:
-    if not isinstance(value, str):
-        return "[unavailable]"
-    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
-    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", " ", text)
-    return textwrap.shorten(" ".join(text.split()), width=width, placeholder=" …") or "[empty]"
+    return display_text(value, width)
 
 
 def _render(run_id: str) -> str:

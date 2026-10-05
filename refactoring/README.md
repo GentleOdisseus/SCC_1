@@ -101,5 +101,6 @@
 - Исходный baseline был **59 passed**; после добавления characterization tests для Speedometer rendering полный suite даёт **63 passed**.
 - Полный function inventory с входами/выходами, side effects, тестами и рисками — в [function inventory](function_inventory.md).
 - Пользователь вручную подтвердил выбор run-папки и ввод DSL-запросов в Explorer. Содержимое непустого `speedometer.log` проверено на synthetic fixtures; текущие сохранённые логи пусты.
-- Production-code refactor не начат: добавлены только tests, логика и runtime не менялись.
-- Следующий шаг — показать точный первый production slice (файлы/функция, риски, проверка) и ждать отдельного approval до любых source edits.
+- Первый одобренный slice выполнен локально: тело чистого formatter `_display_text()` перенесено в `observer/display.py`; прежний `speedometer._display_text()` оставлен как wrapper. Логика и ожидаемый вывод не менялись.
+- Characterization tests: focused 4 passed; full suite **63 passed**. Изменения этого source slice пока не закоммичены/не запушены.
+- Следующий production slice не выбран. Сначала показать его точные функции/файлы, риски и проверки и получить отдельный approval.

@@ -171,7 +171,8 @@ The list covers every explicit `def`/`async def` and method under `src/scc/**/*.
 | `_statusline_uninstall(run_id)` (`:583`) | Removes only owned StatusLine; FS-R/W/terminal. | Ownership helper; lifecycle tests. | H — mutation boundary. |
 | `_event_feed(run_dir, limit=5)` (`:599`) | Shapes recent events for view; FS-R. | `_render`; indirectly characterized by `tests/observer/test_speedometer_render.py`. | L — display input. |
 | `_messages_feed(run_dir, limit=4)` (`:615`) | Shapes recent messages; FS-R. | `_render`; indirectly characterized by `tests/observer/test_speedometer_render.py`. | L — display input/privacy. |
-| `_display_text(value, width=92)` (`:619`) | Removes terminal escapes/control characters and truncates; —. | Direct cases in `tests/observer/test_speedometer_render.py`. | M — terminal safety. |
+| `_display_text(value, width=92)` (`speedometer.py`, old location `:619`) | Compatibility wrapper delegating to `observer/display.py`; keeps the existing Speedometer symbol/signature. | Direct cases in `tests/observer/test_speedometer_render.py`. | M — preserve terminal text output. |
+| `observer/display.py:9 display_text(value, width=92)` | Removes terminal escapes/control characters, normalizes whitespace, shortens long text; —. | Called by `_display_text`; same characterization tests exercise it through the wrapper. | M — terminal safety/output. |
 | `_render(run_id)` (`:627`) | Builds watch screen from persisted records; FS-R/time/terminal string. | Direct cases in `tests/observer/test_speedometer_render.py`; `_watch` displays its output. | M — presentation/schema. |
 | `_watch(run_id)` (`:716`) | Prints once or refreshes display until Ctrl-C; FS-R/terminal/sleep. | CLI; direct test not found. | M — TTY/non-TTY. |
 | `build_parser()` (`:730`) | Defines CLI commands/options; —. | `main`; lifecycle tests. | M — public CLI. |
