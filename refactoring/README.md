@@ -99,7 +99,7 @@
 
 - Safety rule закреплён в `CLAUDE.md` и запушен в `0110_scc_test` (commit `0a93849`).
 - Свежий baseline на текущем коде: **59 passed**.
-- Начальная карта модулей и рисков подготовлена; полный function-by-function inventory ещё нужно оформить.
+- Начальная карта модулей и рисков подготовлена; полный список production-функций с входами/выходами, side effects, тестами и рисками — в [function inventory](function_inventory.md).
 - Explorer implementation/raw-log path есть; ручной E2E Explorer test пользователем ещё ожидается.
 - Production-code refactor не начат.
-- Следующий безопасный шаг — составить inventory: для каждой функции-кандидата указать сигнатуру, purpose, callers, inputs/outputs, side effects, tests и риски. Только после review inventory предлагать один конкретный low-risk slice на approval.
+- Следующий безопасный шаг — просмотреть function inventory и завершить Explorer E2E. После этого предложить один конкретный low-risk slice с файлами, рисками и tests; ждать отдельного approval перед source edit.
