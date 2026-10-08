@@ -21,38 +21,43 @@ Task verifiers ────────────► snapshots.jsonl ┘
 
 ## Подготовка нового prompt-driven прогона
 
-Использовать новый run ID, не reference build `demos/snake/` и не завершённый `snake-prompt-20260928-1`. Из корня SCC:
+Для каждого прогона выбирай **новый, ранее не использованный run ID**. Значение ниже — пример. Запускай setup-команды из корня SCC:
 
 ```bash
-.venv/bin/scc-speedometer prepare --run-id snake-prompt-20260929-01 --task-dir experiments/tasks/snake
-.venv/bin/scc-speedometer start --run-id snake-prompt-20260929-01 --background
-.venv/bin/scc-speedometer hooks install --run-id snake-prompt-20260929-01
-.venv/bin/scc-speedometer statusline install --run-id snake-prompt-20260929-01
+RUN_ID="snake-prompt-$(date +%Y%m%d-%H%M%S)"
+.venv/bin/scc-speedometer prepare --run-id "$RUN_ID" --task-dir experiments/tasks/snake
+.venv/bin/scc-speedometer start --run-id "$RUN_ID" --task-dir experiments/tasks/snake --background
+.venv/bin/scc-speedometer hooks install --run-id "$RUN_ID"
+.venv/bin/scc-speedometer statusline install --run-id "$RUN_ID"
 ```
 
-`prepare` создаёт чистый workspace и корневой `CLAUDE.md`, который импортирует `demos/snake/context/CLAUDE.md`. Запустить измеряемую Claude Code-сессию с правильным CWD:
+`prepare` берёт исходный task context из `experiments/tasks/snake/context/CLAUDE.md`, копирует его в чистый workspace как `demos/snake/context/CLAUDE.md` и создаёт корневой `CLAUDE.md`, который импортирует **копию внутри workspace**. Reference game `demos/snake/` не копируется как готовый результат. `start` пишет run data в `experiments/runs/<run_id>/` и запускает verifier worker.
+
+В отдельной терминальной вкладке подставь то же значение `RUN_ID` и запусти Claude Code из созданного workspace:
 
 ```bash
-cd experiments/runs/snake-prompt-20260929-01/workspace
+cd "experiments/runs/$RUN_ID/workspace"
 claude
 ```
 
-В отдельной терминальной вкладке открыть панель Speedometer:
+В ещё одной вкладке из корня SCC открой Speedometer watch:
 
 ```bash
-cd /Volumes/transcend/SCC
-.venv/bin/scc-speedometer watch --run-id snake-prompt-20260929-01
+cd /path/to/SCC
+RUN_ID="тот-же-run-id"
+.venv/bin/scc-speedometer watch --run-id "$RUN_ID"
 ```
 
 StatusLine install проверяет конфликт и отказывается молча заменять существующий status line. Все интеграции настраиваются только в workspace-local `.claude/settings.local.json`; существующие настройки сохраняются. Если конфликт обнаружен, пользователь должен явно выбрать способ разрешения.
 
-Завершить или проверить run:
+Завершить или проверить run. Вставь тот же `RUN_ID`, который использовался при запуске:
 
 ```bash
-.venv/bin/scc-speedometer status --run-id snake-prompt-20260929-01
-.venv/bin/scc-speedometer hooks uninstall --run-id snake-prompt-20260929-01
-.venv/bin/scc-speedometer statusline uninstall --run-id snake-prompt-20260929-01
-.venv/bin/scc-speedometer stop --run-id snake-prompt-20260929-01
+RUN_ID="тот-же-run-id"
+.venv/bin/scc-speedometer status --run-id "$RUN_ID"
+.venv/bin/scc-speedometer hooks uninstall --run-id "$RUN_ID"
+.venv/bin/scc-speedometer statusline uninstall --run-id "$RUN_ID"
+.venv/bin/scc-speedometer stop --run-id "$RUN_ID"
 ```
 
 ## Формат run data и приватность
@@ -65,7 +70,7 @@ StatusLine install проверяет конфликт и отказываетс
 - `snapshots.jsonl` — verifier-backed progress и ссылки на latest observations;
 - `config.json`, `status.json`, `speedometer.log`, `speedometer.pid.json` — конфигурация и состояние фонового процесса.
 
-Каждая prompt/response запись ограничена 64 KiB, секретоподобные значения маскируются, truncation отмечается явно. Hidden system/developer instructions, reasoning, tool input/output, transcript и содержимое файлов не сохраняются. Данные удаляются вместе с run directory.
+Default cap каждой prompt/response записи — 64 KiB; его можно настроить через `speedometer.message_max_bytes` (минимум 1 KiB). Известные секретоподобные шаблоны маскируются, усечение помечается явно, но redaction не гарантирует обнаружение всех secrets. Hidden system/developer instructions, reasoning, tool input/output, transcript и содержимое файлов не сохраняются в message feed. Background `speedometer.log` — отдельный raw stdout/stderr файл без тех же redaction гарантий. Локальные run данные удаляются вместе с run directory.
 
 ## Интерпретация
 

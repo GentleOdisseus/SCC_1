@@ -169,10 +169,11 @@ The list covers every explicit `def`/`async def` and method under `src/scc/**/*.
 | `_has_effective_statusline(workspace, target)` (`:542`) | Checks inherited/effective StatusLine; FS-R. | Installer; lifecycle tests. | H — collision/overwrite protection. |
 | `_statusline_install(run_id)` (`:560`) | Installs StatusLine while preserving settings; FS-R/W/config/terminal. | Settings helpers; lifecycle tests. | H — user config. |
 | `_statusline_uninstall(run_id)` (`:583`) | Removes only owned StatusLine; FS-R/W/terminal. | Ownership helper; lifecycle tests. | H — mutation boundary. |
-| `_event_feed(run_dir, limit=5)` (`:599`) | Shapes recent events for view; FS-R. | `_render`; direct test not found. | L — display input. |
-| `_messages_feed(run_dir, limit=4)` (`:615`) | Shapes recent messages; FS-R. | `_render`; direct test not found. | L — display input/privacy. |
-| `_display_text(value, width=92)` (`:619`) | Removes terminal escapes/control characters and truncates; —. | `_render`; direct test not found. | M — terminal safety. |
-| `_render(run_id)` (`:627`) | Builds watch screen from persisted records; FS-R/time/terminal string. | `_watch`; direct test not found. | M — presentation/schema. |
+| `_event_feed(run_dir, limit=5)` (`:599`) | Shapes recent events for view; FS-R. | `_render`; indirectly characterized by `tests/observer/test_speedometer_render.py`. | L — display input. |
+| `_messages_feed(run_dir, limit=4)` (`:615`) | Shapes recent messages; FS-R. | `_render`; indirectly characterized by `tests/observer/test_speedometer_render.py`. | L — display input/privacy. |
+| `_display_text(value, width=92)` (`speedometer.py`, old location `:619`) | Compatibility wrapper delegating to `observer/display.py`; keeps the existing Speedometer symbol/signature. | Direct cases in `tests/observer/test_speedometer_render.py`. | M — preserve terminal text output. |
+| `observer/display.py:9 display_text(value, width=92)` | Removes terminal escapes/control characters, normalizes whitespace, shortens long text; —. | Called by `_display_text`; same characterization tests exercise it through the wrapper. | M — terminal safety/output. |
+| `_render(run_id)` (`:627`) | Builds watch screen from persisted records; FS-R/time/terminal string. | Direct cases in `tests/observer/test_speedometer_render.py`; `_watch` displays its output. | M — presentation/schema. |
 | `_watch(run_id)` (`:716`) | Prints once or refreshes display until Ctrl-C; FS-R/terminal/sleep. | CLI; direct test not found. | M — TTY/non-TTY. |
 | `build_parser()` (`:730`) | Defines CLI commands/options; —. | `main`; lifecycle tests. | M — public CLI. |
 | `main(argv=None)` (`:779`) | Dispatches commands and maps errors to exit status; delegates FS/process/stdin/terminal effects. | All CLI handlers; hook/lifecycle tests. | H — public orchestration. |
