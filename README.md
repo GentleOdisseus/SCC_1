@@ -1,88 +1,81 @@
-# SCC — Agentic State Geometry
+# SCC — инструменты для наблюдения за задачей Claude Code
 
-SCC исследует, как оценивать прогресс долгих задач по проверяемым свидетельствам и как организовать наблюдение за работой агента. Сейчас в репозитории есть локальный Speedometer, который измеряет verifier-backed progress, и Explorer для просмотра локальных run-логов. Полный замкнутый Geometry → Controller → Agent runtime пока не подключён; научные гипотезы ещё требуют экспериментов.
+SCC помогает запускать проверки долгой задачи, смотреть результаты и читать локальные логи. Сейчас есть три отдельных пользовательских инструмента:
+
+1. **Speedometer** запускает verifier-ы и записывает проверяемый прогресс.
+2. **Explorer** читает runs и помогает найти интересующие записи.
+3. **Developer Diary** — добровольный локальный журнал новых видимых prompts и финальных ответов.
+
+Их нужно подключать по отдельности. Speedometer не запускает Explorer или Diary автоматически, а Explorer не меняет исходные логи.
 
 ## Contents
 
-- [Overview](#overview)
-- [Current runtime](#current-runtime)
-- [Architecture and modules](#architecture-and-modules)
-- [Current capabilities and limits](#current-capabilities-and-limits)
-- [Run data and privacy](#run-data-and-privacy)
-- [Installation](#installation)
-- [Run Speedometer](#run-speedometer)
-- [Run Explorer](#run-explorer)
-- [Explorer query language](#explorer-query-language)
-- [Roadmap](#roadmap)
-- [Development and tests](#development-and-tests)
-- [Build and distribution](#build-and-distribution)
-- [Documentation map](#documentation-map)
+- [В двух словах](#в-двух-словах)
+- [Как инструменты работают вместе](#как-инструменты-работают-вместе)
+- [Что умеет каждый инструмент](#что-умеет-каждый-инструмент)
+- [Технологии](#технологии)
+- [Установка](#установка)
+- [Подключение SCC к новому проекту](#подключение-scc-к-новому-проекту)
+- [Быстрый запуск Speedometer](#быстрый-запуск-speedometer)
+- [Быстрый запуск Explorer](#быстрый-запуск-explorer)
+- [Быстрый запуск Developer Diary](#быстрый-запуск-developer-diary)
+- [Best practices](#best-practices)
+- [Частые вопросы](#частые-вопросы)
+- [Будущие цели](#будущие-цели)
+- [Документы и архитектура](#документы-и-архитектура)
 
-## Overview
+## В двух словах
 
-Цель SCC — представить длительную задачу как путь от текущего состояния к **области** допустимых состояний. Прогресс должен подтверждаться evidence, а не самооценкой агента.
+Для задачи нужны две разные папки:
 
-Теоретическая цель описывает расстояние как `D = (D_completion, D_cost, U_D)`. В текущем Speedometer runtime реально рассчитывается только verifier-backed `D_completion`. Cost-to-go и uncertainty не выводятся, пока для них нет валидированных данных.
+- **Task contract**: описание цели (`goal.yaml`) и проверяющие программы (verifiers).
+- **Workspace**: файлы проекта, которые будет менять Claude Code.
 
-## Current runtime
+Speedometer запускает verifiers и сохраняет результаты в отдельную папку run. Explorer открывает эту папку для чтения. Diary включается отдельно и сохраняет будущие visible prompts и финальные ответы в tracked папку.
 
-Сегодняшний проверяемый путь:
+## Как инструменты работают вместе
 
 ```text
-Claude Code hooks + StatusLine + task verifiers
-                    ↓
-      локальные run-файлы и verifier snapshots
-                    ↓
-       Speedometer TUI / Explorer для человека
+Task contract ───────┐
+                     ├──► Speedometer ──► experiments/runs/<run_id>/
+Workspace + Claude ──┘                           │
+                                                 └──► Explorer (read-only)
+
+Claude visible prompt/final answer ── opt-in hooks ──► Developer Diary
 ```
 
-Speedometer наблюдает за отдельной задачей. Он не является исполнителем Claude Code и сейчас не вызывает `ThresholdPolicy`, не отправляет агенту решения и не выполняет rollback.
+Speedometer — **наблюдатель**, а не исполнитель и не контроллер. Он не вызывает `ThresholdPolicy`, не посылает Claude команды и не откатывает проект.
 
-## Architecture and modules
+По умолчанию Speedometer пишет runs в `experiments/runs/<run_id>/` относительно текущей папки терминала. Запускай команды из корня SCC, если используешь этот путь.
 
-| Модуль | Путь | Назначение и текущий статус |
-|---|---|---|
-| Observer / Speedometer | `src/scc/observer/` | Отдельные CLI, worker и adapters для выбранных Claude Code hook events, StatusLine samples и task verifiers. Это основной локальный measurement prototype. |
-| Log Explorer | `src/scc/log_explorer/` | Отдельный read-only интерфейс `scc-explorer` для каталога runs, structured timeline/detail, DSL-поиска и явного просмотра worker log. |
-| Geometry | `src/scc/geometry/` | Библиотечные формулы расстояния и context/dynamics. В текущий Speedometer loop подключена только часть completion/progress. |
-| Evidence | `src/scc/evidence/` | Библиотечная работа с verifier/Git evidence; не является единым live ingestion pipeline. |
-| Controller | `src/scc/controller/` | `ThresholdPolicy` и actions существуют как отдельные библиотеки; live Speedometer не применяет их к агенту. |
-| Observatory | `src/scc/observatory/` | Отдельный human-facing renderer; это не веб-dashboard текущего Speedometer. |
+## Что умеет каждый инструмент
 
-Текущая архитектура с source-backed границами описана в [`docs/02_architecture/current_runtime_map.md`](docs/02_architecture/current_runtime_map.md).
+| Инструмент | Как запустить | Назначение | Важная граница |
+|---|---|---|---|
+| **Speedometer** | `.venv/bin/scc-speedometer ...` | Запускает task verifiers, пишет snapshots и показывает observer status. | Только verifier `q_i` двигают `D_completion`; `stop` останавливает observer, а не Claude и не задачу. |
+| **Explorer** | `.venv/bin/scc-explorer` | Ищет run, показывает structured JSONL timeline/details и поддерживает DSL. | Читает локальные runs; ничего не меняет и не обходит workspace. `speedometer.log` открывается отдельно и является raw текстом. |
+| **Developer Diary** | `.venv/bin/python tools/developer_diary.py ...` | После явного opt-in записывает новые видимые prompts и финальные Stop answers, отображает commits отдельно. | Не backfill-ит старые чаты; не читает tool payloads, hidden instructions, reasoning, API bodies или `speedometer.log`; не делает auto-commit/push. |
 
-## Current capabilities and limits
+### Как считать прогресс Speedometer
 
-### Speedometer
+Для каждой requirement verifier возвращает `q_i` от 0 до 1. Progress — weighted average результатов verifiers. Цель достигнута, только если все hard requirements прошли и progress достиг `q_min`.
 
-- Подготовка чистого task workspace, запуск/статус/остановка фонового observer, Speedometer `watch`, установка opt-in hooks и StatusLine.
-- Запись allowlisted user prompt и финального видимого ответа Stop hook; это не streaming transcript.
-- Запись StatusLine context samples и периодических task-verifier snapshots.
-- `D_completion` обновляется только результатами verifier `q_i`. Достижение цели требует hard constraints и `q_min`.
-- Prompt-completeness — отдельная детерминированная четырёхпунктовая эвристика; это не проверка корректности prompt и не progress evidence.
-- Остановка observer не доказывает завершение или провал задачи. Микророллбэк до обработки prompt не реализован.
+Количество сообщений, длина ответа, context samples и hook events — наблюдения, а не доказательство завершения. Prompt-completeness — отдельная четырёхпунктовая эвристика (goal, constraints, deliverable, checks); это не судья правильности ответа.
 
-Подробный сценарий Snake MVP: [`MVP/README.md`](MVP/README.md).
+## Технологии
 
-### Explorer
+- Python 3.10 или новее.
+- Setuptools / `pyproject.toml` — сборочная система и CLI entry points.
+- PyYAML — чтение config и task goal.
+- Стандартная библиотека Python: argparse, JSON/JSONL, pathlib, subprocess, curses и файловые операции.
+- pytest — dev/test dependency.
+- Git — история коммитов; Diary читает её, но не публикует коммиты самостоятельно.
 
-- Отдельная команда `scc-explorer`; существующая команда `scc-speedometer` не меняется.
-- По умолчанию список runs берётся из `experiments/runs/<run_id>` относительно текущего каталога. В TUI стрелки и Enter открывают run и запись.
-- Structured timeline читает разрешённые config/status/PID/JSONL данные. Клавиша `l` открывает отдельный process-log view для `speedometer.log`.
-- Обычные JSONL records сейчас загружаются eagerly; поддерживаемый объём и полный lazy pagination ещё не установлены.
+Другие optional extras описаны в `pyproject.toml`; они не нужны для обычного Speedometer/Explorer/Diary flow. **Новые packages без явного согласования не устанавливать.**
 
-## Run data and privacy
+## Установка
 
-Локальные данные лежат в `experiments/runs/<run_id>/` и не предназначены для commit. В папке могут находиться `config.json`, `status.json`, `speedometer.pid.json`, `events.jsonl`, `messages.jsonl`, `context_samples.jsonl`, `snapshots.jsonl`, `workspace/` и `speedometer.log`.
-
-- В `messages.jsonl` попадают только разрешённые prompt/final-response записи с cap/redaction/truncation. Hidden instructions, reasoning, tool payloads, transcripts и содержимое workspace не являются источниками Explorer.
-- Structured JSONL отображается через field allowlist; Explorer ничего не меняет и не создаёт постоянный индекс.
-- `speedometer.log` — отдельный raw stdout/stderr background worker. Он доступен только в явном `l` view и может содержать произвольный worker output; у него **нет** тех же redaction/cap гарантий, что у message feed. UI об этом предупреждает.
-- Удаление run directory удаляет локальные данные этого прогона. Экспорт из Explorer не поддерживается.
-
-## Installation
-
-Текущий способ — установить Python-проект в virtual environment. Из корня репозитория:
+Из корня SCC:
 
 ```bash
 python3 -m venv .venv
@@ -90,90 +83,147 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
-После установки должны появиться команды `scc-speedometer` и `scc-explorer` в `.venv/bin/`. Если проект уже установлен editable и новая команда не появилась после изменения `[project.scripts]`, повтори `python -m pip install -e ".[dev]"`, чтобы обновить entry-point metadata. Этот локальный install генерирует команды в окружении; он ещё не создаёт скачиваемый standalone app.
-
-Пошаговое объяснение: [`docs/installation.md`](docs/installation.md).
-
-## Run Speedometer
+Проверь:
 
 ```bash
 .venv/bin/scc-speedometer --help
+.venv/bin/scc-explorer --help
+.venv/bin/python tools/developer_diary.py --help
 ```
 
-Для Snake measurement flow используй сценарий из [MVP README](MVP/README.md). Важно: `scc-speedometer stop` останавливает background observer, а не Claude Code и не задачу.
+Если добавили новую CLI entry point в `pyproject.toml`, а команда не появилась, повтори `python -m pip install -e ".[dev]"`, чтобы обновить installed metadata. Не отключай build isolation. Сейчас это Python project install, **не** скачиваемый standalone installer. Полный гайд: [Installation](docs/installation.md).
 
-## Run Explorer
+## Подключение SCC к новому проекту
 
-Из корня SCC:
+Полный пошаговый сценарий с примерами goal/verifiers, запуском Claude и трёх модулей находится в [New project guide](docs/guides/new-project.md). Коротко:
+
+1. Создай task contract: `goal.yaml` и настоящие `.sh`/`.py` verifier scripts.
+2. Выбери уже существующий project workspace с инструкциями проекта.
+3. Из корня SCC запусти `scc-speedometer start` с новым run ID, task path и workspace path.
+4. Явно подключи Speedometer hooks и при необходимости StatusLine.
+5. Опционально подключи Diary hooks в том же workspace. Это отдельная локальная настройка.
+6. Запусти Claude Code из workspace. Speedometer watch можно открыть в отдельном терминале.
+7. Посмотри run в Explorer, затем проверь статус/verifier snapshots.
+
+**Важно:** `scc-speedometer prepare` сейчас создаёт Snake-specific workspace. Для любого другого проекта подготовь workspace/task contract сам и используй `start --task-dir PATH --workspace PATH`.
+
+## Быстрый запуск Speedometer
+
+Из SCC root и с новым run ID:
+
+```bash
+.venv/bin/scc-speedometer start \
+  --run-id my-task-20261008-01 \
+  --task-dir /absolute/path/to/task-contract \
+  --workspace /absolute/path/to/project-workspace \
+  --background
+
+.venv/bin/scc-speedometer hooks install --run-id my-task-20261008-01
+.venv/bin/scc-speedometer statusline install --run-id my-task-20261008-01
+.venv/bin/scc-speedometer status --run-id my-task-20261008-01
+.venv/bin/scc-speedometer watch --run-id my-task-20261008-01
+```
+
+Открой вторую Claude Code сессию в `project-workspace`. Подробно: [Speedometer guide](docs/guides/speedometer.md). Для Snake demo: [MVP guide](MVP/README.md).
+
+## Быстрый запуск Explorer
+
+Из SCC root:
 
 ```bash
 .venv/bin/scc-explorer --list
 .venv/bin/scc-explorer
 ```
 
-Для run-папки в другом месте:
+В TUI выбери run стрелками ↑/↓, Enter откроет timeline, Enter на записи покажет detail, `/` и `f` открывают поле DSL, `r` refresh, `b` назад, `l` отдельный raw worker-log view, `q` выход. В `l`-виде `n`/`p` листают результаты.
+
+Если runs лежат в другом root:
 
 ```bash
-.venv/bin/scc-explorer --runs-dir /path/to/SCC/experiments/runs
+.venv/bin/scc-explorer --runs-dir /absolute/path/to/experiments/runs
 ```
 
-В TUI: ↑/↓ — выбрать, Enter — открыть, `/` — поиск, `f` — query/filter, `r` — refresh, `b` — назад, `l` — отдельный worker-log view, `q` — выйти. В process-log view `n`/`p` листают страницы, Enter открывает строку. Полное руководство: [`docs/02_architecture/local_run_explorer.md`](docs/02_architecture/local_run_explorer.md).
-
-## Explorer query language
-
-Первая версия — ограниченный декларативный DSL. Bash не поддерживается и не исполняется как запрос.
-
-- Свободные слова и фразы в кавычках ищутся без учёта регистра; все условия соединяются неявным AND.
-- Selectors `source`, `type`, `session`, `tool`, `requirement`, `status` используют точное совпадение без учёта регистра.
-- `after` и `before` принимают ISO-8601 date/datetime; границы строгие.
-- OR/NOT, произвольные JSON-поля и команды не поддерживаются.
-
-Примеры:
+Примеры DSL:
 
 ```text
-source:messages collision after:2026-09-01T00:00:00Z
-requirement:tests status:success
+source:messages type:user "collision"
+source:snapshots requirement:tests status:success
+source:messages after:2026-10-01T00:00:00Z before:2026-10-08T00:00:00Z
 source:speedometer.log "verifier error"
 ```
 
-Последний запрос вводится внутри process-log view после клавиши `l`. DSL/reference guide: [`docs/02_architecture/local_run_explorer.md#язык-запросов`](docs/02_architecture/local_run_explorer.md).
+Текст и quoted phrases — case-insensitive substring; условия соединяются AND. Selectors имеют точное case-insensitive совпадение; `after`/`before` — строгие ISO-8601 границы. Bash не является query языком. Подробно: [Explorer guide](docs/guides/explorer.md).
 
-## Roadmap
+## Быстрый запуск Developer Diary
 
-Ближайшие шаги:
+Diary hooks выключены по умолчанию. Из SCC root для будущих сессий, запущенных из корня проекта:
 
-1. Завершить end-to-end проверку Explorer на runs/fixtures и дать пользователю проверить запуск на своём тестовом run.
-2. После Explorer E2E выбрать платформы и подготовить скачиваемую сборку Speedometer + Explorer.
-3. Провести полный behavior-preserving refactor отдельными согласованными шагами; начать только после отдельного плана и approval.
-4. Системно-аналитический пилот временно отложен.
+```bash
+.venv/bin/python tools/developer_diary.py hooks install --workspace .
+```
 
-Долгосрочные цели, не текущие функции:
+Для Speedometer workspace Diary подключается отдельно после запуска/preparation run:
 
-- **Микророллбэк:** восстановление task/workspace состояния непосредственно до обработки выбранного prompt. Нужны отдельная безопасная спецификация и проверка; реализация не начинается сейчас.
-- **Robot-teacher engine:** возможное развитие Speedometer в движок для роботов-преподавателей. Будущий Explorer должен позволять разбирать learner-visible turns — prompt и ответ преподавателя — через отдельный adapter. Состав записей и доступ к дополнительным данным потребуют отдельной архитектуры/evidence/privacy policy; raw API bodies, hidden prompts и reasoning не подразумеваются автоматически.
+```bash
+.venv/bin/python tools/developer_diary.py hooks install \
+  --workspace experiments/runs/<run_id>/workspace --run-id <run_id>
+```
 
-Не считать controller actions, rollback, robot teaching, `D_cost` или `U_D` частью текущего runtime.
+Начни новую Claude Code session или reload hooks. Затем:
 
-## Development and tests
+```bash
+.venv/bin/python tools/developer_diary.py preview
+.venv/bin/python tools/developer_diary.py sync
+```
 
-Установить dev-зависимости по разделу Installation, затем запускать:
+Перед публикацией проверь JSONL captures и Markdown:
+
+```bash
+git status --short
+git diff -- developer_diary/
+```
+
+Diary сохраняет видимые prompts/final answers в tracked файлах. Ограниченная redaction может пропустить секрет. Hooks и sync не делают stage, commit или push; review и публикация — вручную. Старые chats/runs не импортируются. Инструкция и uninstall: [Developer Diary guide](docs/guides/developer-diary.md).
+
+## Best practices
+
+- Каждый новый task/goal contract — новый run ID. Не изменяй goal/verifier в середине сравнительного прогона.
+- Task contract и workspace — разные папки; verifiers должны проверять реальные критерии, а не просто печатать `q=1`.
+- Speedometer commands запускай из SCC root; Claude — из workspace. Для другого CWD используй absolute paths или `--runs-dir`.
+- До анализа проверь `status` и snapshot. Не выводи task outcome из observer `stopped`.
+- Explorer используй как read-only просмотрщик. Не меняй raw files руками для «исправления» истории.
+- Дневник включай только там, где нужна дополнительная tracked копия видимых prompts/answers; перед Git публикацией обязательно проверь capture JSONL.
+- Сначала синтетические тесты, затем real run. Не тестируй новую функциональность на единственной ценной копии run/workspace.
+
+## Частые вопросы
+
+- **Почему Explorer не показывает run?** Проверь рабочий каталог или укажи корень `--runs-dir`; параметр должен указывать на папку-контейнер с run subfolders.
+- **Почему `prepare` не подходит новому проекту?** Он пока Snake-specific. Для другого проекта создай свой task contract и workspace, используй `start --task-dir ... --workspace ...`.
+- **Почему progress не изменился после хорошего prompt?** Prompts/answers — observations; только verifier `q_i` меняют progress.
+- **`stop` завершает Claude Code?** Нет. Он останавливает background observer.
+- **Почему нет prompt/answer?** Hooks opt-in, должны стоять в текущем workspace и быть перезагружены. Speedometer сохраняет финальный Stop response, не streaming output.
+- **Почему `speedometer.log` пуст?** Worker мог ничего не вывести. Ищи сессию в `messages.jsonl`, результаты в `snapshots.jsonl`.
+- **Почему Diary показывает 0?** Hook стоит в другом workspace или после установки ещё не было новой сессии; старые сообщения не импортируются.
+- **Как исправлять ошибки, не повреждая данные?** Сначала сохрани run и прочитай [FAQ/troubleshooting](docs/guides/faq.md); не удаляй run/settings как первый шаг.
+
+## Будущие цели
+
+Сейчас приоритет — документация и безопасный end-to-end testing трёх workflows, затем обсуждение упаковки/installer. Standalone build ещё отсутствует. Не устанавливай новый build tool без явного согласия; сначала сравним форматы/платформы и тест-план.
+
+Микророллбэк к состоянию до prompt и robot-teacher engine — будущие направления, не текущие функции. Системно-аналитический пилот отложен.
+
+## Тесты
 
 ```bash
 .venv/bin/pytest -q
 .venv/bin/pytest -q tests/log_explorer
+.venv/bin/pytest -q tests/developer_diary
 ```
 
-Любая реорганизация должна сохранять existing behavior и пройти Speedometer regression tests. Новые функции и изменение logic добавляются только после согласования.
+## Документы и архитектура
 
-## Build and distribution
-
-Проект использует `pyproject.toml` и setuptools build backend. Поле `[project.scripts]` объявляет console entry points; установщик создаёт executable wrappers в virtual environment. Это отличается от одного standalone executable: **скачиваемая сборка ещё не реализована**. План сборки, варианты artifacts и порядок последующей упаковки описаны в [`docs/build.md`](docs/build.md); не заявлять поддерживаемые платформы, пока их не выбрали и не проверили.
-
-## Documentation map
-
-- `CLAUDE.md` — durable правила работы с кодом и документацией.
-- `docs/00_vision.md` — теория и будущие направления проекта.
-- `docs/02_architecture/current_runtime_map.md` — что действительно подключено в текущем runtime.
-- `docs/02_architecture/local_run_explorer.md` и `local_run_explorer_implementation_spec.md` — Explorer guide, privacy boundary и acceptance limits.
-- `docs/installation.md`, `docs/build.md` — текущая установка и будущая сборка.
-- `MVP/` — проверенный scope/measurement protocol Speedometer.
+- [Speedometer guide](docs/guides/speedometer.md) · [Explorer guide](docs/guides/explorer.md) · [Diary guide](docs/guides/developer-diary.md)
+- [New project setup](docs/guides/new-project.md) · [FAQ](docs/guides/faq.md) · [Technology stack](docs/guides/technology.md)
+- [Текущий runtime map](docs/02_architecture/current_runtime_map.md) · [Architecture overview](docs/02_architecture/overview.md) · [Controller](docs/02_architecture/controller.md)
+- [Explorer implementation spec](docs/02_architecture/local_run_explorer_implementation_spec.md) · [Speedometer measurement](MVP/02_measurement.md)
+- [Run storage](experiments/README.md) · [Installation](docs/installation.md) · [Build/distribution status](docs/build.md) · [Project rules](CLAUDE.md)

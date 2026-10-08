@@ -24,20 +24,24 @@
 Из корня SCC подготовить чистую рабочую папку и запустить observer:
 
 ```bash
-.venv/bin/scc-speedometer prepare --run-id snake-prompt-20260929-01 --task-dir experiments/tasks/snake
-.venv/bin/scc-speedometer start --run-id snake-prompt-20260929-01 --task-dir experiments/tasks/snake --background
-.venv/bin/scc-speedometer hooks install --run-id snake-prompt-20260929-01
-.venv/bin/scc-speedometer statusline install --run-id snake-prompt-20260929-01
-.venv/bin/scc-speedometer watch --run-id snake-prompt-20260929-01
+RUN_ID="snake-prompt-$(date +%Y%m%d-%H%M%S)"
+.venv/bin/scc-speedometer prepare --run-id "$RUN_ID" --task-dir experiments/tasks/snake
+.venv/bin/scc-speedometer start --run-id "$RUN_ID" --task-dir experiments/tasks/snake --background
+.venv/bin/scc-speedometer hooks install --run-id "$RUN_ID"
+.venv/bin/scc-speedometer statusline install --run-id "$RUN_ID"
+.venv/bin/scc-speedometer watch --run-id "$RUN_ID"
 ```
 
 Запусти отдельную Claude Code сессию из подготовленного workspace, чтобы корневой `CLAUDE.md` загрузил задачу:
 
+Подставь тот же ID в новой терминальной вкладке, чтобы загрузить созданный workspace:
+
 ```bash
-cd experiments/runs/snake-prompt-20260929-01/workspace
+RUN_ID="тот-же-run-id"
+cd "experiments/runs/$RUN_ID/workspace"
 claude
 ```
 
-Hooks и StatusLine устанавливаются явно в workspace-local `.claude/settings.local.json`; существующий StatusLine не заменяется автоматически. Проверить или остановить run: `scc-speedometer status --run-id snake-prompt-20260929-01` и `scc-speedometer stop --run-id snake-prompt-20260929-01`. Удаление run directory удаляет его локальные messages/context logs.
+Hooks и StatusLine устанавливаются явно в workspace-local `.claude/settings.local.json`; существующий StatusLine не заменяется автоматически. Проверить или остановить run из корня SCC: `.venv/bin/scc-speedometer status --run-id "$RUN_ID"` и `.venv/bin/scc-speedometer stop --run-id "$RUN_ID"`. Удаление run directory удаляет его локальные messages/context logs.
 
 Подробные ограничения измерений и критерии проверки — в `02_measurement.md`, `03_implementation.md` и `04_validation.md`. Наличие работающего интерфейса само по себе не подтверждает гипотезы SCC.

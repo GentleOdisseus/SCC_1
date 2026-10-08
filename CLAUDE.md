@@ -22,7 +22,8 @@
 - Измеряемая работа — разработка Snake по промптам пользователя; SCC Speedometer — отдельный observer, не исполнитель задачи и не контроллер агента.
 - **Не реализовывать и не завершать Snake до старта измеряемой сессии.** Подготовить чистый workspace; его root `CLAUDE.md` должен импортировать контекст из `demos/snake/context/CLAUDE.md`. Запускать Claude Code с этим workspace как CWD; затем пользователь задаёт промпты, а Claude разрабатывает задачу в наблюдаемой сессии.
 - Speedometer отдельно записывает/показывает user prompts, финальные видимые ответы Claude и session events. Stop-hook response — финальный ответ хода, не live streaming.
-- Текст хранить только локально в run directory; ограничение 64 KiB на запись, высоконадёжное маскирование секретов и явная метка truncation. Не записывать hidden system/developer instructions, internal reasoning, tool input/output, transcript или содержимое файлов.
+- В Speedometer run feed текст хранить локально в run directory; default cap — 64 KiB на запись (limit configurable), redaction известными шаблонами и явная truncation-метка. Redaction не гарантирует обнаружение всех секретов. Не записывать hidden system/developer instructions, internal reasoning, tool input/output, transcript или содержимое файлов.
+- Developer diary — отдельное явное исключение: после opt-in hooks видимые user prompts и финальные assistant answers могут попасть в tracked `developer_diary/`. Redaction/cap не гарантирует удаление всех секретов; перед commit требуется ручной review. Не включать tool input/output, hidden prompts, reasoning, API bodies или raw `speedometer.log`; никогда не commit/push автоматически.
 - Prompt completeness — отдельная 4-пунктовая heuristic (goal, constraints, deliverable, acceptance/checks), по 0.25 за пункт; показывать флаги. Это не измерение истинного качества и не доказательство прогресса.
 - Размер контекста брать только из StatusLine JSON (`context_window`); `used_percentage` input-only. Hooks не содержат context usage; отсутствующие/null данные показывать как unavailable.
 - `D_completion` считается только по утверждённым weighted criteria и verifiers; prompt/response/context/session observations не меняют `q_i`. Цель достигнута лишь при всех hard constraints и `q_min`.
@@ -43,3 +44,4 @@
 - Если после рефакторинга поведение отличается, тест падает или результат проверки неоднозначен — остановиться; описать проблему, последствия, варианты и рекомендацию, не скрывать расхождение и не продолжать следующий slice до решения пользователя.
 - Уточняющий вопрос пользователю формулировать с проблемой, последствиями, доступными вариантами и рекомендуемым решением.
 - Баш-команды допустимы для запуска/обслуживания; не превращать их в язык запросов Explorer и не выполнять команды, введённые как query.
+- Не устанавливать новые пакеты/dependencies без предварительного явного одобрения пользователя. Сначала объяснить необходимость и проверить варианты без новых пакетов.
